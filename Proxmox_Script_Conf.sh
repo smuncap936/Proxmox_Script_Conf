@@ -114,7 +114,7 @@ sudo apt install -y freerdp3-x11
 
 echo ""
 echo "Versión instalada de FreeRDP:"
-xfreerdp /version || true
+xfreerdp3 /version || true
 
 # -------------------------------
 # FASE 4 - Crear ~/.xinitrc
