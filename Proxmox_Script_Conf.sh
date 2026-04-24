@@ -1,176 +1,164 @@
 #!/bin/bash
 
-# ==========================================
-# SCRIPT: Configuración Thin Client Debian
-# ==========================================
+# ============================================================
+# Script de configuración de cliente RDP ligero para Proxmox
+# - Desactiva entorno gráfico (gdm3/lightdm)
+# - Instala Xorg mínimo + Openbox
+# - Instala FreeRDP
+# - Solicita IP de destino por teclado
+# - Verifica conectividad con ping
+# - Crea ~/.xinitrc para conexión automática por RDP
+# ============================================================
 
-echo "========================================="
-echo " CONFIGURACIÓN THIN CLIENT - DEBIAN"
-echo "========================================="
+set -e
 
-# Comprobación de ejecución como root
-if [ "$EUID" -ne 0 ]; then
-    echo "❌ Este script debe ejecutarse con sudo o como root."
-    exit 1
+echo "=============================================="
+echo " CONFIGURACIÓN CLIENTE RDP LIGERO PARA PROXMOX"
+echo "=============================================="
+
+# -------------------------------
+# VARIABLES POR DEFECTO
+# -------------------------------
+
+RDP_IP="192.168.12.9"
+RDP_USER="usuario"
+RDP_PASS="usuario"
+
+# -------------------------------
+# PASO ADICIONAL - Solicitar IP por teclado
+# -------------------------------
+
+echo ""
+echo ">>> CONFIGURACIÓN DE DESTINO RDP"
+
+read -p "Introduce la IP de la máquina RDP [${RDP_IP}]: " INPUT_IP
+
+if [ -n "$INPUT_IP" ]; then
+    RDP_IP="$INPUT_IP"
 fi
 
-# Detectar usuario real
-USUARIO_REAL=${SUDO_USER:-$(whoami)}
+echo "IP configurada: $RDP_IP"
 
-# ------------------------------------------
-# 1. Desactivar entorno gráfico (modo consola)
-# ------------------------------------------
+# -------------------------------
+# VERIFICACIÓN DE CONECTIVIDAD
+# -------------------------------
+
 echo ""
-echo "[1/5] Configurando arranque en modo consola..."
+echo ">>> Verificando conectividad con ${RDP_IP}..."
 
-systemctl set-default multi-user.target
+if ping -c 4 -W 2 "$RDP_IP" > /dev/null 2>&1; then
+    echo "Conectividad OK: la máquina responde al ping."
+else
+    echo ""
+    echo "AVISO: No se ha podido contactar con ${RDP_IP}"
+    echo "La máquina no responde al ping."
+    echo ""
 
-echo "✔ Sistema configurado en modo texto."
+    read -p "¿Deseas continuar igualmente? (s/n): " CONTINUAR
+
+    case "$CONTINUAR" in
+        s|S|si|SI|sí|SÍ)
+            echo "Continuando con la instalación..."
+            ;;
+        *)
+            echo "Instalación cancelada por el usuario."
+            exit 1
+            ;;
+    esac
+fi
+
+# -------------------------------
+# FASE 1 - Desactivar arranque gráfico
+# -------------------------------
+
 echo ""
-echo "ℹ️ Para volver al modo gráfico:"
-echo "   sudo systemctl set-default graphical.target"
-echo "   reboot"
+echo ">>> FASE 1 - Desactivando gestor gráfico..."
 
-# ------------------------------------------
-# 2. Instalar Xorg mínimo
-# ------------------------------------------
+if systemctl list-unit-files | grep -q gdm3; then
+    echo "Detectado gdm3"
+    sudo systemctl disable gdm3 || true
+    sudo systemctl stop gdm3 || true
+fi
+
+if systemctl list-unit-files | grep -q lightdm; then
+    echo "Detectado lightdm"
+    sudo systemctl disable lightdm || true
+    sudo systemctl stop lightdm || true
+fi
+
+echo "Gestor gráfico desactivado."
+
+# -------------------------------
+# FASE 2 - Instalar Xorg mínimo
+# -------------------------------
+
 echo ""
-echo "[2/5] Instalando entorno gráfico mínimo (Xorg)..."
+echo ">>> FASE 2 - Instalando Xorg mínimo..."
 
-apt update
-apt install -y --no-install-recommends \
+sudo apt update
+sudo apt install -y --no-install-recommends \
     xserver-xorg \
     xinit \
-    x11-xserver-utils \
-    xauth \
-    xfonts-base
+    openbox
 
-echo "✔ Xorg instalado (sin escritorio)."
+echo "Xorg mínimo instalado."
 
-# ------------------------------------------
-# 3. Verificar e instalar FreeRDP
-# ------------------------------------------
+# -------------------------------
+# FASE 3 - Instalar FreeRDP
+# -------------------------------
+
 echo ""
-echo "[3/5] Verificando FreeRDP..."
+echo ">>> FASE 3 - Instalando FreeRDP..."
 
-if command -v xfreerdp3 >/dev/null 2>&1; then
-    echo "✔ xfreerdp3 ya instalado."
-    FREERDP_CMD="xfreerdp3"
-elif command -v xfreerdp >/dev/null 2>&1; then
-    echo "✔ xfreerdp (versión anterior) detectado."
-    FREERDP_CMD="xfreerdp"
-else
-    echo "❌ FreeRDP no encontrado. Instalando..."
-    apt install -y freerdp2-x11
-    FREERDP_CMD="xfreerdp"
-fi
+sudo apt install -y freerdp3-x11
 
-# ------------------------------------------
-# 4. Solicitar IP
-# ------------------------------------------
 echo ""
-echo "[4/5] Configuración de conexión"
+echo "Versión instalada de FreeRDP:"
+xfreerdp /version || true
 
-read -p "Introduce la IP del servidor Proxmox/VM: " SERVER_IP
+# -------------------------------
+# FASE 4 - Crear ~/.xinitrc
+# -------------------------------
 
-if [[ -z "$SERVER_IP" ]]; then
-    echo "❌ No se ha introducido ninguna IP."
-    exit 1
-fi
+echo ""
+echo ">>> FASE 4 - Creando script ~/.xinitrc..."
 
-echo "✔ IP configurada: $SERVER_IP"
+cat > ~/.xinitrc << EOF
+#!/bin/sh
 
-# Crear script RDP
-SCRIPT_PATH="/home/$USUARIO_REAL/rdp.sh"
+xset -dpms
+xset s off
+xset s noblank
 
-cat <<EOF > $SCRIPT_PATH
-#!/bin/bash
+openbox-session &
 
-SERVER_IP="$SERVER_IP"
-USERNAME="usuario"
-PASSWORD="password"
-
-while true; do
-    $FREERDP_CMD /v:\$SERVER_IP \\
-                 /u:\$USERNAME \\
-                 /p:\$PASSWORD \\
-                 /f \\
-                 /cert:ignore \\
-                 /dynamic-resolution
-
-    echo "Reconectando en 3 segundos..."
-    sleep 3
-done
+exec xfreerdp3 \\
+/v:${RDP_IP} \\
+/u:${RDP_USER} \\
+/p:${RDP_PASS} \\
+/f \\
+/cert:ignore \\
+/sound \\
+/clipboard
 EOF
 
-chmod +x $SCRIPT_PATH
-chown $USUARIO_REAL:$USUARIO_REAL $SCRIPT_PATH
+chmod +x ~/.xinitrc
 
-echo "✔ Script creado en $SCRIPT_PATH"
+echo ".xinitrc creado correctamente."
 
-# Crear .xinitrc
-XINITRC="/home/$USUARIO_REAL/.xinitrc"
-
-echo "exec $SCRIPT_PATH" > $XINITRC
-
-chmod +x $XINITRC
-chown $USUARIO_REAL:$USUARIO_REAL $XINITRC
-
-# ------------------------------------------
-# 5. Preguntar autoarranque con startx
-# ------------------------------------------
-echo ""
-echo "[5/5] Configuración de inicio automático"
-
-read -p "¿Deseas iniciar automáticamente la conexión (modo kiosco)? (s/n): " AUTO_START
-
-if [[ "$AUTO_START" == "s" || "$AUTO_START" == "S" ]]; then
-
-    echo "✔ Activando inicio automático..."
-
-    # Autologin en tty1
-    mkdir -p /etc/systemd/system/getty@tty1.service.d
-
-    cat <<EOF > /etc/systemd/system/getty@tty1.service.d/override.conf
-[Service]
-ExecStart=
-ExecStart=-/sbin/agetty --autologin $USUARIO_REAL --noclear %I \$TERM
-EOF
-
-    # Configurar startx automático
-    PROFILE_PATH="/home/$USUARIO_REAL/.profile"
-
-    cat <<EOF >> $PROFILE_PATH
-
-# Autoarranque X para Thin Client
-if [ -z "\$DISPLAY" ] && [ "\$(tty)" = "/dev/tty1" ]; then
-    startx
-fi
-EOF
-
-    chown $USUARIO_REAL:$USUARIO_REAL $PROFILE_PATH
-
-    systemctl daemon-reexec
-
-    echo "✔ Modo kiosco activado."
-else
-    echo "ℹ️ Inicio automático NO activado."
-fi
-
-# ------------------------------------------
+# -------------------------------
 # FINAL
-# ------------------------------------------
+# -------------------------------
+
 echo ""
-echo "========================================="
-echo " CONFIGURACIÓN COMPLETADA"
-echo "========================================="
+echo "=============================================="
+echo " CONFIGURACIÓN FINALIZADA"
+echo "=============================================="
 echo ""
-echo "Para iniciar manualmente:"
-echo "   startx"
+echo "Para iniciar la sesión RDP automáticamente:"
 echo ""
-echo "Para editar conexión:"
-echo "   nano $SCRIPT_PATH"
+echo "    startx"
 echo ""
-echo "Reinicia el sistema para aplicar cambios:"
-echo "   reboot"
+echo "Si deseas arranque automático al iniciar sesión,"
+echo "puedo ayudarte con el servicio systemd."
 echo ""
