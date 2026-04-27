@@ -93,7 +93,7 @@ echo "Gestor gráfico desactivado."
 # -------------------------------
 
 echo ""
-echo ">>> FASE 2 - Instalando Xorg mínimo..."
+echo ">>> FASE 2 - Instalando Xorg mínimo...(REVISAR)"
 
 sudo apt update
 sudo apt install -y --no-install-recommends \
