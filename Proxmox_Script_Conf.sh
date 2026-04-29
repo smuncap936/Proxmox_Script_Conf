@@ -8,6 +8,7 @@
 # - Solicita IP de destino por teclado
 # - Verifica conectividad con ping
 # - Crea ~/.xinitrc para conexión automática por RDP
+# - Configura usuario en sudo y entorno correcto
 # ============================================================
 
 set -e
@@ -23,9 +24,26 @@ echo "=============================================="
 RDP_IP="192.168.12.9"
 RDP_USER="usuario"
 RDP_PASS="usuario"
+LOCAL_USER="$(whoami)"
 
 # -------------------------------
-# PASO ADICIONAL - Solicitar IP por teclado
+# VERIFICAR USUARIO
+# -------------------------------
+
+echo ""
+echo ">>> Usuario actual: $LOCAL_USER"
+
+echo ""
+read -p "¿Es este el usuario que ejecutará el RDP? (s/n): " OKUSER
+
+if [[ "$OKUSER" != "s" && "$OKUSER" != "S" ]]; then
+    read -p "Introduce el usuario correcto del sistema: " LOCAL_USER
+fi
+
+echo "Usuario seleccionado: $LOCAL_USER"
+
+# -------------------------------
+# PASO ADICIONAL - IP RDP
 # -------------------------------
 
 echo ""
@@ -51,80 +69,77 @@ if ping -c 4 -W 2 "$RDP_IP" > /dev/null 2>&1; then
 else
     echo ""
     echo "AVISO: No se ha podido contactar con ${RDP_IP}"
-    echo "La máquina no responde al ping."
-    echo ""
 
     read -p "¿Deseas continuar igualmente? (s/n): " CONTINUAR
 
     case "$CONTINUAR" in
         s|S|si|SI|sí|SÍ)
-            echo "Continuando con la instalación..."
+            echo "Continuando..."
             ;;
         *)
-            echo "Instalación cancelada por el usuario."
+            echo "Cancelado."
             exit 1
             ;;
     esac
 fi
 
 # -------------------------------
-# FASE 1 - Desactivar arranque gráfico
+# FASE 1 - SUDO (IMPORTANTE)
 # -------------------------------
 
 echo ""
-echo ">>> FASE 1 - Desactivando gestor gráfico..."
+echo ">>> FASE 1 - Configurando usuario sudo..."
 
-if systemctl list-unit-files | grep -q gdm3; then
-    echo "Detectado gdm3"
-    sudo systemctl disable gdm3 || true
-    sudo systemctl stop gdm3 || true
+if getent group sudo > /dev/null; then
+    sudo usermod -aG sudo "$LOCAL_USER"
+else
+    sudo groupadd sudo
+    sudo usermod -aG sudo "$LOCAL_USER"
 fi
 
-if systemctl list-unit-files | grep -q lightdm; then
-    echo "Detectado lightdm"
-    sudo systemctl disable lightdm || true
-    sudo systemctl stop lightdm || true
-fi
+echo "Usuario añadido a sudo (puede requerir reinicio de sesión)."
+
+# -------------------------------
+# FASE 2 - DESACTIVAR ENTORNO GRÁFICO
+# -------------------------------
+
+echo ""
+echo ">>> FASE 2 - Desactivando gestor gráfico..."
+
+sudo systemctl disable gdm3 2>/dev/null || true
+sudo systemctl stop gdm3 2>/dev/null || true
+
+sudo systemctl disable lightdm 2>/dev/null || true
+sudo systemctl stop lightdm 2>/dev/null || true
 
 echo "Gestor gráfico desactivado."
 
 # -------------------------------
-# FASE 2 - Instalar Xorg mínimo
+# FASE 3 - INSTALAR PAQUETES
 # -------------------------------
 
 echo ""
-echo ">>> FASE 2 - Instalando Xorg mínimo...(REVISAR)"
+echo ">>> FASE 3 - Instalando paquetes base..."
 
 sudo apt update
+
 sudo apt install -y --no-install-recommends \
     xserver-xorg \
     xinit \
-    openbox
+    openbox \
+    freerdp3-x11
 
-echo "Xorg mínimo instalado."
-
-# -------------------------------
-# FASE 3 - Instalar FreeRDP
-# -------------------------------
-
-echo ""
-echo ">>> FASE 3 - Instalando FreeRDP..."
-
-sudo apt install -y freerdp3-x11
-
-echo ""
-echo "Versión instalada de FreeRDP:"
-xfreerdp3 /version || true
+echo "Paquetes instalados."
 
 # -------------------------------
-# FASE 4 - Crear ~/.xinitrc
+# FASE 4 - CREAR .xinitrc (CORRECTO EN USUARIO REAL)
 # -------------------------------
 
 echo ""
-echo ">>> FASE 4 - Creando script ~/.xinitrc..."
+echo ">>> FASE 4 - Creando ~/.xinitrc para $LOCAL_USER..."
 
-cat > ~/.xinitrc << EOF
-#!/bin/sh
+sudo -u "$LOCAL_USER" bash -c "cat > /home/$LOCAL_USER/.xinitrc << EOF
+#!/bin/bash
 
 xset -dpms
 xset s off
@@ -140,9 +155,10 @@ exec xfreerdp3 \\
 /cert:ignore \\
 /sound \\
 /clipboard
-EOF
+EOF"
 
-chmod +x ~/.xinitrc
+sudo chmod +x /home/$LOCAL_USER/.xinitrc
+sudo chown "$LOCAL_USER:$LOCAL_USER" /home/$LOCAL_USER/.xinitrc
 
 echo ".xinitrc creado correctamente."
 
@@ -155,10 +171,13 @@ echo "=============================================="
 echo " CONFIGURACIÓN FINALIZADA"
 echo "=============================================="
 echo ""
-echo "Para iniciar la sesión RDP automáticamente:"
+echo "IMPORTANTE:"
+echo "- Cierra sesión COMPLETA (o reinicia)"
+echo "- Vuelve a entrar con el usuario: $LOCAL_USER"
+echo "- Asegúrate de que pertenece a sudo: groups"
 echo ""
+echo "Para iniciar RDP:"
 echo "    startx"
 echo ""
-echo "Si deseas arranque automático al iniciar sesión,"
-echo "puedo ayudarte con el servicio systemd."
-echo ""
+echo "Se ejecutará automáticamente xfreerdp3"
+echo "=============================================="
