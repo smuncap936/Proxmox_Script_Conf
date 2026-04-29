@@ -1,5 +1,15 @@
 #!/bin/bash
-
+# ============================================================
+# Script de configuración de cliente RDP ligero para Proxmox
+## DESCARGA DEL SCRIPT 
+#  wget https://raw.githubusercontent.com/smuncap936/Proxmox_Script_Conf/main/Proxmox_Script_Conf.sh
+##
+## Dar permisos de ejecución
+#  chmod +x Proxmox_Script_Conf.sh
+## Ejecutar el script
+#  ./Proxmox_Script_Conf.sh
+#
+# ============================================================
 # ============================================================
 # Script de configuración de cliente RDP ligero para Proxmox
 # - Desactiva entorno gráfico (gdm3/lightdm)
