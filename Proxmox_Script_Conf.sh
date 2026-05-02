@@ -1,24 +1,15 @@
 #!/bin/bash
 # ============================================================
 # Script de configuración de cliente RDP ligero para Proxmox
-## DESCARGA DEL SCRIPT 
-#  wget https://raw.githubusercontent.com/smuncap936/Proxmox_Script_Conf/main/Proxmox_Script_Conf.sh
-##
-## Dar permisos de ejecución
-#  chmod +x Proxmox_Script_Conf.sh
-## Ejecutar el script
-#  ./Proxmox_Script_Conf.sh
 #
-# ============================================================
-# ============================================================
-# Script de configuración de cliente RDP ligero para Proxmox
-# - Desactiva entorno gráfico (gdm3/lightdm)
-# - Instala Xorg mínimo + Openbox
-# - Instala FreeRDP
-# - Solicita IP de destino por teclado
-# - Verifica conectividad con ping
-# - Crea ~/.xinitrc para conexión automática por RDP
-# - Configura usuario en sudo y entorno correcto
+# DESCARGA DEL SCRIPT 
+# wget https://raw.githubusercontent.com/smuncap936/Proxmox_Script_Conf/main/Proxmox_Script_Conf.sh
+#
+# Dar permisos de ejecución
+# chmod +x Proxmox_Script_Conf.sh
+#
+# Ejecutar el script
+# sudo ./Proxmox_Script_Conf.sh
 # ============================================================
 
 set -e
@@ -36,6 +27,9 @@ RDP_USER="usuario"
 RDP_PASS="usuario"
 LOCAL_USER="$(whoami)"
 
+AUTO_USER="usuario"
+AUTO_PASS="usuario"
+
 # -------------------------------
 # VERIFICAR USUARIO
 # -------------------------------
@@ -43,7 +37,6 @@ LOCAL_USER="$(whoami)"
 echo ""
 echo ">>> Usuario actual: $LOCAL_USER"
 
-echo ""
 read -p "¿Es este el usuario que ejecutará el RDP? (s/n): " OKUSER
 
 if [[ "$OKUSER" != "s" && "$OKUSER" != "S" ]]; then
@@ -53,13 +46,11 @@ fi
 echo "Usuario seleccionado: $LOCAL_USER"
 
 # -------------------------------
-# PASO ADICIONAL - IP RDP
+# CONFIGURACIÓN IP
 # -------------------------------
 
 echo ""
-echo ">>> CONFIGURACIÓN DE DESTINO RDP"
-
-read -p "Introduce la IP de la máquina RDP [${RDP_IP}]: " INPUT_IP
+read -p "IP RDP [${RDP_IP}]: " INPUT_IP
 
 if [ -n "$INPUT_IP" ]; then
     RDP_IP="$INPUT_IP"
@@ -68,37 +59,29 @@ fi
 echo "IP configurada: $RDP_IP"
 
 # -------------------------------
-# VERIFICACIÓN DE CONECTIVIDAD
+# CONECTIVIDAD
 # -------------------------------
 
 echo ""
-echo ">>> Verificando conectividad con ${RDP_IP}..."
+echo "Verificando conectividad..."
 
 if ping -c 4 -W 2 "$RDP_IP" > /dev/null 2>&1; then
-    echo "Conectividad OK: la máquina responde al ping."
+    echo "OK: máquina responde"
 else
-    echo ""
-    echo "AVISO: No se ha podido contactar con ${RDP_IP}"
-
-    read -p "¿Deseas continuar igualmente? (s/n): " CONTINUAR
-
-    case "$CONTINUAR" in
-        s|S|si|SI|sí|SÍ)
-            echo "Continuando..."
-            ;;
-        *)
-            echo "Cancelado."
-            exit 1
-            ;;
+    echo "AVISO: no responde el ping"
+    read -p "¿Continuar? (s/n): " CONT
+    case "$CONT" in
+        s|S|si|SI|sí|SÍ) echo "Continuando..." ;;
+        *) echo "Cancelado"; exit 1 ;;
     esac
 fi
 
 # -------------------------------
-# FASE 1 - SUDO (IMPORTANTE)
+# FASE 1 - SUDO
 # -------------------------------
 
 echo ""
-echo ">>> FASE 1 - Configurando usuario sudo..."
+echo "Configurando sudo..."
 
 if getent group sudo > /dev/null; then
     sudo usermod -aG sudo "$LOCAL_USER"
@@ -107,14 +90,12 @@ else
     sudo usermod -aG sudo "$LOCAL_USER"
 fi
 
-echo "Usuario añadido a sudo (puede requerir reinicio de sesión)."
-
 # -------------------------------
-# FASE 2 - DESACTIVAR ENTORNO GRÁFICO
+# FASE 2 - DESACTIVAR GUI
 # -------------------------------
 
 echo ""
-echo ">>> FASE 2 - Desactivando gestor gráfico..."
+echo "Desactivando entorno gráfico..."
 
 sudo systemctl disable gdm3 2>/dev/null || true
 sudo systemctl stop gdm3 2>/dev/null || true
@@ -122,14 +103,12 @@ sudo systemctl stop gdm3 2>/dev/null || true
 sudo systemctl disable lightdm 2>/dev/null || true
 sudo systemctl stop lightdm 2>/dev/null || true
 
-echo "Gestor gráfico desactivado."
-
 # -------------------------------
 # FASE 3 - INSTALAR PAQUETES
 # -------------------------------
 
 echo ""
-echo ">>> FASE 3 - Instalando paquetes base..."
+echo "Instalando paquetes..."
 
 sudo apt update
 
@@ -139,14 +118,12 @@ sudo apt install -y --no-install-recommends \
     openbox \
     freerdp3-x11
 
-echo "Paquetes instalados."
-
 # -------------------------------
-# FASE 4 - CREAR .xinitrc (CORRECTO EN USUARIO REAL)
+# FASE 4 - CREAR .xinitrc (MENÚ INTERACTIVO)
 # -------------------------------
 
 echo ""
-echo ">>> FASE 4 - Creando ~/.xinitrc para $LOCAL_USER..."
+echo "Creando .xinitrc con menú..."
 
 sudo -u "$LOCAL_USER" bash -c "cat > /home/$LOCAL_USER/.xinitrc << EOF
 #!/bin/bash
@@ -157,20 +134,109 @@ xset s noblank
 
 openbox-session &
 
-exec xfreerdp3 \\
-/v:${RDP_IP} \\
-/u:${RDP_USER} \\
-/p:${RDP_PASS} \\
-/f \\
-/cert:ignore \\
-/sound \\
-/clipboard
+while true; do
+
+    xfreerdp3 \\
+    /v:${RDP_IP} \\
+    /u:${RDP_USER} \\
+    /p:${RDP_PASS} \\
+    /f \\
+    /cert:ignore \\
+    /sound \\
+    /clipboard
+
+    clear
+    echo \"=======================================\"
+    echo \" SESIÓN RDP FINALIZADA\"
+    echo \"=======================================\"
+    echo \"\"
+    echo \"0 - Apagar equipo\"
+    echo \"1 - Reconectar RDP\"
+    echo \"2 - Ir a consola\"
+    echo \"\"
+    echo \"Se apagará automáticamente en 120 segundos...\"
+    echo \"\"
+
+    read -t 120 -p \"Selecciona una opción: \" opcion
+
+    case \"\$opcion\" in
+        0)
+            echo \"Apagando equipo...\"
+            sleep 2
+            sudo poweroff
+            ;;
+        1)
+            echo \"Reconectando...\"
+            sleep 2
+            continue
+            ;;
+        2)
+            echo \"Saliendo a consola...\"
+            sleep 2
+            break
+            ;;
+        *)
+            echo \"Sin selección. Apagando...\"
+            sleep 2
+            sudo poweroff
+            ;;
+    esac
+
+done
+
 EOF"
 
 sudo chmod +x /home/$LOCAL_USER/.xinitrc
 sudo chown "$LOCAL_USER:$LOCAL_USER" /home/$LOCAL_USER/.xinitrc
 
-echo ".xinitrc creado correctamente."
+# -------------------------------
+# FASE 5 - AUTOLOGIN
+# -------------------------------
+
+echo ""
+echo "Configurando autologin..."
+
+AUTOLOGIN_FILE="/etc/systemd/system/getty@tty1.service.d/kiosk-autologin.conf"
+
+if [ ! -f "$AUTOLOGIN_FILE" ]; then
+    echo "Creando autologin..."
+    
+    sudo mkdir -p /etc/systemd/system/getty@tty1.service.d/
+
+    sudo bash -c "cat > $AUTOLOGIN_FILE << EOF
+[Service]
+ExecStart=
+ExecStart=-/sbin/agetty --autologin ${AUTO_USER} --noclear %I \$TERM
+EOF"
+
+    sudo systemctl daemon-reexec
+    echo "Autologin configurado."
+else
+    echo "Autologin ya existe. No se modifica."
+fi
+
+# -------------------------------
+# FASE 6 - AUTO STARTX
+# -------------------------------
+
+echo ""
+echo "Configurando inicio automático de startx..."
+
+sudo -u "$LOCAL_USER" bash -c "cat > /home/$LOCAL_USER/.bash_profile << 'EOF'
+if [ -z \"\$DISPLAY\" ] && [ \"\$(tty)\" = \"/dev/tty1\" ]; then
+    startx
+fi
+EOF"
+
+# -------------------------------
+# FASE 7 - PERMITIR APAGADO SIN PASSWORD
+# -------------------------------
+
+echo ""
+echo "Configurando apagado sin contraseña..."
+
+sudo bash -c "echo '$LOCAL_USER ALL=(ALL) NOPASSWD: /sbin/poweroff' > /etc/sudoers.d/kiosk-poweroff"
+sudo chmod 440 /etc/sudoers.d/kiosk-poweroff
 
 # -------------------------------
 # FINAL
@@ -182,12 +248,8 @@ echo " CONFIGURACIÓN FINALIZADA"
 echo "=============================================="
 echo ""
 echo "IMPORTANTE:"
-echo "- Cierra sesión COMPLETA (o reinicia)"
-echo "- Vuelve a entrar con el usuario: $LOCAL_USER"
-echo "- Asegúrate de que pertenece a sudo: groups"
+echo "- Reinicia el equipo"
+echo "- El sistema iniciará automáticamente en RDP"
+echo "- Al cerrar RDP aparecerá un menú interactivo"
 echo ""
-echo "Para iniciar RDP:"
-echo "    startx"
-echo ""
-echo "Se ejecutará automáticamente xfreerdp3"
 echo "=============================================="
