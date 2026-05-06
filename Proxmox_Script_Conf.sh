@@ -22,7 +22,7 @@ echo "=============================================="
 # VARIABLES POR DEFECTO
 # -------------------------------
 
-RDP_IP="192.168.12.9"
+RDP_IP="192.168.15.198"
 RDP_USER="usuario"
 RDP_PASS="usuario"
 LOCAL_USER="$(whoami)"
@@ -143,37 +143,41 @@ while true; do
     /f \\
     /cert:ignore \\
     /sound \\
-    /clipboard \\
-    /timeout:5000 \\
-    /auto-reconnect:0 &
-
-    PID=$!
-    wait $PID
-    RET=$?
+    /clipboard
 
     clear
-    echo "======================================="
-    echo " SESIÓN RDP FINALIZADA (code $RET)"
-    echo "======================================="
-    echo ""
-    echo "0 - Apagar equipo"
-    echo "1 - Reconectar RDP"
-    echo "2 - Ir a consola"
-    echo ""
+    echo \"=======================================\"
+    echo \" SESIÓN RDP FINALIZADA\"
+    echo \"=======================================\"
+    echo \"\"
+    echo \"0 - Apagar equipo\"
+    echo \"1 - Reconectar RDP\"
+    echo \"2 - Ir a consola\"
+    echo \"\"
+    echo \"Se apagará automáticamente en 120 segundos...\"
+    echo \"\"
 
-    read -t 120 -p "Selecciona una opción: " opcion
+    read -t 120 -p \"Selecciona una opción: \" opcion
 
-    case "$opcion" in
+    case \"\$opcion\" in
         0)
+            echo \"Apagando equipo...\"
+            sleep 2
             sudo poweroff
             ;;
         1)
+            echo \"Reconectando...\"
+            sleep 2
             continue
             ;;
         2)
+            echo \"Saliendo a consola...\"
+            sleep 2
             break
             ;;
         *)
+            echo \"Sin selección. Apagando...\"
+            sleep 2
             sudo poweroff
             ;;
     esac
